@@ -2,7 +2,9 @@ package com.auth.jwtsecurity.controller;
 
 import com.auth.jwtsecurity.dto.*;
 import com.auth.jwtsecurity.service.AuthService;
+import com.auth.jwtsecurity.service.JwtService; // Added Import
 import com.auth.jwtsecurity.service.MobileOtpService;
+import io.jsonwebtoken.Claims; // Added Import
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -23,6 +25,7 @@ public class AuthController {
 
     private final AuthService authService;
     private final MobileOtpService mobileOtpService;
+    private final JwtService jwtService; // Inject JwtService to extract claims
 
     @PostMapping("/students/bulk")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
@@ -48,8 +51,21 @@ public class AuthController {
         refreshTokenCookie.setMaxAge(7 * 24 * 60 * 60);
         response.addCookie(refreshTokenCookie);
 
+        // --- UPDATED RESPONSE LOGIC ---
+        // Extracting isFirstLogin from the generated token to send in response body
+        Claims claims = jwtService.extractAllClaims(tokenPair.getAccessToken());
+        Boolean isFirstLogin = claims.get("isFirstLogin", Boolean.class);
+
+        // If null (e.g. admin), default to false
+        if (isFirstLogin == null) {
+            isFirstLogin = false;
+        }
+
         return ResponseEntity.ok(
-                Map.of("accessToken", tokenPair.getAccessToken())
+                Map.of(
+                        "accessToken", tokenPair.getAccessToken(),
+                        "isFirstLogin", isFirstLogin
+                )
         );
     }
 
