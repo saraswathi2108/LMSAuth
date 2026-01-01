@@ -3,7 +3,7 @@ package com.auth.jwtsecurity.service;
 import com.auth.jwtsecurity.dto.*;
 import com.auth.jwtsecurity.model.*;
 import com.auth.jwtsecurity.repository.*;
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -33,14 +33,10 @@ public class AuthService {
     private static final Pattern PASSWORD_PATTERN =
             Pattern.compile("^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&]).{8,}$");
 
-    // =====================================================
-    // BULK STUDENT CREATE (ADMIN)
-    // =====================================================
 
     @Transactional
     public void bulkCreateStudents(List<BulkStudentRequest> students) {
 
-        // 1️⃣ Collect emails & PANs
         List<String> emails = students.stream()
                 .map(s -> s.getEmail().toLowerCase().trim())
                 .toList();
@@ -49,11 +45,9 @@ public class AuthService {
                 .map(BulkStudentRequest::getPanNumber)
                 .toList();
 
-        // 2️⃣ Fetch existing in ONE query
         List<String> existingEmails = userRepository.findExistingEmails(emails);
         List<String> existingPans = userRepository.findExistingPans(pans);
 
-        // 3️⃣ Prepare users
         List<User> users = new ArrayList<>();
         Map<String, String> emailPasswordMap = new HashMap<>();
 
@@ -113,7 +107,6 @@ public class AuthService {
 
         SecurityContextHolder.getContext().setAuthentication(authentication);
 
-        // STUDENT → enforce single login
         Optional<User> studentOpt = userRepository.findByEmail(email);
         if (studentOpt.isPresent()) {
 
@@ -123,7 +116,6 @@ public class AuthService {
                 throw new IllegalStateException("Account is deactivated");
             }
 
-            // 🔥 single-device login
             userSessionRepository.deleteByUserId(student.getId());
 
             String sessionId = UUID.randomUUID().toString();
@@ -143,9 +135,6 @@ public class AuthService {
         return jwtService.generateTokenPair(authentication, null);
     }
 
-    // =====================================================
-    // LOGOUT
-    // =====================================================
 
     @Transactional
     public void logout(Authentication authentication) {
@@ -158,9 +147,6 @@ public class AuthService {
                 );
     }
 
-    // =====================================================
-    // UPDATE / DELETE STUDENT (EMAIL)
-    // =====================================================
 
     @Transactional
     public void deleteUserByEmail(String email) {
@@ -188,9 +174,6 @@ public class AuthService {
         userRepository.save(user);
     }
 
-    // =====================================================
-    // CHANGE PASSWORD
-    // =====================================================
 
     @Transactional
     public void changePassword(ChangePasswordRequest request,
@@ -206,12 +189,13 @@ public class AuthService {
             throw new IllegalArgumentException("Weak password");
         }
 
-        // ADMIN
         Optional<AdminUser> adminOpt = adminUserRepository.findByEmail(email);
         if (adminOpt.isPresent()) {
 
             AdminUser admin = adminOpt.get();
-            if (!passwordEncoder.matches(request.getOldPassword(), admin.getPassword())) {
+
+            if (request.getOldPassword() == null ||
+                    !passwordEncoder.matches(request.getOldPassword(), admin.getPassword())) {
                 throw new IllegalArgumentException("Old password incorrect");
             }
 
@@ -220,22 +204,27 @@ public class AuthService {
             return;
         }
 
-        // STUDENT
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
-        if (!passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
+        if (user.isForcePasswordChange()) {
+
+            user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+
+            user.setForcePasswordChange(false);
+
+            userRepository.save(user);
+            return;
+        }
+
+        if (request.getOldPassword() == null ||
+                !passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
             throw new IllegalArgumentException("Old password incorrect");
         }
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
-        user.setForcePasswordChange(false);
         userRepository.save(user);
     }
-
-    // =====================================================
-    // CREATE ADMIN
-    // =====================================================
 
     @Transactional
     public void createAdmin(@Valid CreateAdminRequest request) {
@@ -259,9 +248,6 @@ public class AuthService {
         adminUserRepository.save(admin);
     }
 
-    // =====================================================
-    // REFRESH TOKEN
-    // =====================================================
 
     public TokenPair refreshTokenFromCookie(String refreshToken) {
 

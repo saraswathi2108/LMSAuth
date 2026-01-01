@@ -27,7 +27,6 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // ===== BASIC DETAILS =====
 
     @Column(name = "full_name", nullable = false, length = 100)
     private String fullName;
@@ -64,11 +63,9 @@ public class User {
 
     @Column(name = "force_password_change", nullable = false)
     private boolean forcePasswordChange = true;
-    // true → random password → must change on first login
 
     @Column(name = "is_active", nullable = false)
     private boolean isActive = true;
-    // admin can disable student without deleting
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
